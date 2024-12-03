@@ -11,23 +11,11 @@ impl FromStr for Report {
     type Err = ParseReportError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut is_error = false;
-        let levels = s
-            .split_ascii_whitespace()
-            .map(|s| s.parse::<i32>())
-            .map(|v| match v {
-                Ok(value) => value,
-                _ => {
-                    is_error = true;
-                    -1
-                }
-            })
-            .collect();
-        if is_error {
-            Err(ParseReportError)
-        } else {
-            Ok(Report { levels })
-        }
+        s.split_ascii_whitespace()
+            .map(|s| s.parse())
+            .collect::<Result<_, _>>()
+            .map(|levels| Self { levels })
+            .map_err(|_| ParseReportError)
     }
 }
 
@@ -61,16 +49,15 @@ impl Report {
     }
 
     fn is_stable_dampened(&self) -> bool {
-        let mut levels_dampened = (0..self.levels.len()).map(|idx_skip| {
-            self.levels
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| *i != idx_skip)
-                .map(|(_, &value)| value)
-                .collect()
-        });
-
-        levels_dampened.any(|levels| Report { levels }.is_stable())
+        (0..self.levels.len())
+            .map(|idx_skip| {
+                self.levels
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, &v)| if i == idx_skip { None } else { Some(v) })
+                    .collect()
+            })
+            .any(|levels| Self { levels }.is_stable())
     }
 }
 
