@@ -1,3 +1,5 @@
+use std::iter::once;
+
 use regex::{Captures, Regex};
 
 #[derive(Debug)]
@@ -24,19 +26,68 @@ impl From<Captures<'_>> for Multiply {
     }
 }
 
+#[derive(Debug)]
+enum Token {
+    Do,
+    Dont,
+    Mul(Multiply),
+}
+
+impl From<Captures<'_>> for Token {
+    fn from(value: Captures<'_>) -> Self {
+        let tokens = value.iter().skip(1).collect::<Vec<_>>();
+        match &tokens[..] {
+            [Some(_), None, None, None] => Token::Do,
+            [None, Some(_), None, None] => Token::Dont,
+            [None, None, Some(first), Some(second)] => Token::Mul(Multiply {
+                factor1: first
+                    .as_str()
+                    .parse()
+                    .expect("Should be able to parse first factor"),
+                factor2: second
+                    .as_str()
+                    .parse()
+                    .expect("Should be able to parse second factor"),
+            }),
+            _ => unreachable!(),
+        }
+    }
+}
+
 fn main() {
     let contents = std::fs::read_to_string("data/input.txt").expect("Failed to read the input");
 
-    let regex = Regex::new(r"mul\((\d{1,3}),(\d{1,3})\)").expect("Regex should be valid");
+    let regex = Regex::new(r"(do\(\))|(don't\(\))|mul\((\d{1,3}),(\d{1,3})\)")
+        .expect("Regex should be valid");
 
-    let multiplies = regex
+    let tokens = regex
         .captures_iter(&contents)
         .map(|c| c.into())
-        .collect::<Vec<Multiply>>();
+        .collect::<Vec<Token>>();
 
-    println!("Matches: {:?}", multiplies);
+    println!("Matches: {:?}", tokens);
     println!(
         "Sum of products: {}",
-        multiplies.iter().map(|m| m.product()).sum::<i32>()
+        tokens
+            .iter()
+            .filter_map(|t| match t {
+                Token::Mul(v) => Some(v.product()),
+                _ => None,
+            })
+            .sum::<i32>()
+    );
+
+    println!(
+        "Sum of filtered products: {}",
+        once(&Token::Do)
+            .chain(tokens.iter())
+            .rfold((0, 0), |(tmp, acc), val| {
+                match val {
+                    Token::Mul(v) => (tmp + v.product(), acc),
+                    Token::Dont => (0, acc),
+                    Token::Do => (0, acc + tmp),
+                }
+            })
+            .1
     );
 }
