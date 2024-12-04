@@ -166,6 +166,58 @@ impl WordSearch {
             })
             .sum()
     }
+
+    fn check_x_mas(&self, row: usize, col: usize) -> bool {
+        if self.lines[row][col] != Character::A {
+            return false;
+        }
+        if let (Some(top), Some(bottom), Some(left), Some(right)) = (
+            row.checked_sub(1),
+            row.checked_add(1),
+            col.checked_sub(1),
+            col.checked_add(1),
+        ) {
+            let top_left = self.lines.get(top).and_then(|row| row.get(left));
+            let top_right = self.lines.get(top).and_then(|row| row.get(right));
+            let bottom_left = self.lines.get(bottom).and_then(|row| row.get(left));
+            let bottom_right = self.lines.get(bottom).and_then(|row| row.get(right));
+
+            if let (Some(&top_left), Some(&top_right), Some(&bottom_left), Some(&bottom_right)) =
+                (top_left, top_right, bottom_left, bottom_right)
+            {
+                let all = vec![top_left, top_right, bottom_right, bottom_left];
+                if all.iter().any(|&v| v != Character::M && v != Character::S) {
+                    return false;
+                }
+                match all[..] {
+                    [Character::M, Character::M, Character::S, Character::S] => true,
+                    [Character::S, Character::M, Character::M, Character::S] => true,
+                    [Character::S, Character::S, Character::M, Character::M] => true,
+                    [Character::M, Character::S, Character::S, Character::M] => true,
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn check_x_mases(&self) -> usize {
+        (0..self.lines[0].len())
+            .flat_map(|row| (0..self.lines.len()).map(move |col| (row, col)))
+            .map(|(row, col)| {
+                let res = self.check_x_mas(row, col);
+                if res {
+                    println!("found X-MAS at row {}, col {}", row, col);
+                    1
+                } else {
+                    0
+                }
+            })
+            .sum()
+    }
 }
 
 fn main() {
@@ -176,4 +228,5 @@ fn main() {
     // println!("Word search:\n{:?}", word_search)
     let seq = vec![Character::X, Character::M, Character::A, Character::S];
     println!("{:?}", word_search.count_matches(&seq));
+    println!("{:?}", word_search.check_x_mases());
 }
