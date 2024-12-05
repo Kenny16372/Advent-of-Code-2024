@@ -1,4 +1,7 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 #[derive(Debug)]
 struct PageRules {
@@ -53,6 +56,22 @@ impl PageRules {
             return !violates_pages_before && !violates_pages_after;
         })
     }
+
+    fn to_pages(&self) -> Vec<Page> {
+        self.is_before
+            .keys()
+            .map(|&number| Page {
+                number,
+                comes_before: self.is_before.get(&number).unwrap(),
+            })
+            .collect()
+    }
+}
+
+#[derive(Clone)]
+struct Page<'a> {
+    number: usize,
+    comes_before: &'a Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -117,6 +136,56 @@ impl Update {
         );
         self.page_numbers[self.page_numbers.len() / 2]
     }
+
+    fn reorder(&mut self, page_order: &mut HashMap<usize, usize>) {
+        for page in self.page_numbers.iter() {
+            page_order.entry(*page).or_insert(0);
+        }
+        println!("Page order: {:?}", page_order);
+
+        self.page_numbers.sort_by(|a, b| {
+            page_order
+                .get(a)
+                .expect("I'm pretty confident I've inserted all pages")
+                .cmp(
+                    page_order
+                        .get(b)
+                        .expect("Maybe I didn't, but who knows these days"),
+                )
+        });
+    }
+}
+
+fn get_page_order(pages: Vec<Page>) -> HashMap<usize, usize> {
+    let mut result: HashMap<usize, usize> = HashMap::new();
+    for page in &pages[..] {
+        let mut pls_check_me: Vec<_> = page.comes_before.iter().collect();
+        while let Some(number) = pls_check_me.pop() {
+            println!("to be checked: {}", pls_check_me.len());
+            let entry = *result.entry(*number).or_insert(1);
+            if let Some(&this) = result.get(&page.number) {
+                if this + 1 > entry {
+                    result.insert(*number, this + 1);
+                }
+            } else {
+                result.insert(page.number, 0);
+            }
+
+            pages
+                .iter()
+                .find(|page| page.number == *number)
+                .expect("Should exist...")
+                .comes_before
+                .iter()
+                .for_each(|number| {
+                    if !pls_check_me.contains(&number) {
+                        pls_check_me.push(number)
+                    }
+                });
+        }
+    }
+
+    result
 }
 
 fn main() {
@@ -127,16 +196,32 @@ fn main() {
         .map(|line| line.parse())
         .collect::<Result<_, _>>()
         .expect("Ordering rules should be valid");
-    let updates: Vec<Update> = lines
+    let mut updates: Vec<Update> = lines
         .map(|line| line.parse())
         .collect::<Result<_, _>>()
         .expect("Updates should be valid");
     let page_rules: PageRules = ordering_rules.into();
 
-    let updates_valid_middle_page_number_sum: usize = updates
+    let updates_valid_middle_page_number_sum: usize = (&updates)
         .iter()
         .filter_map(|update| {
             if page_rules.is_update_valid(update) {
+                Some(update.get_middle_page())
+            } else {
+                None
+            }
+        })
+        .sum();
+    let pages = page_rules.to_pages();
+    let mut page_order = get_page_order(pages);
+
+    let updates_invalid_reordered_middle_page_number_sum: usize = updates
+        .iter_mut()
+        .filter_map(|update| {
+            if !page_rules.is_update_valid(update) {
+                println!("before: {:?}", update.page_numbers);
+                update.reorder(&mut page_order);
+                println!("after: {:?}", update.page_numbers);
                 Some(update.get_middle_page())
             } else {
                 None
@@ -150,5 +235,9 @@ fn main() {
     println!(
         "Sum of middle pages of valid updates: {}",
         updates_valid_middle_page_number_sum
-    )
+    );
+    println!(
+        "Sum of middle pages of invalid updates after reordering: {}",
+        updates_invalid_reordered_middle_page_number_sum
+    );
 }
