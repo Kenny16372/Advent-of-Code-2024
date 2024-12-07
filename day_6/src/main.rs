@@ -1,9 +1,10 @@
 use std::{
+    collections::HashSet,
     fmt::{Display, Formatter, Write},
     str::FromStr,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 enum Direction {
     Up,
     Down,
@@ -37,11 +38,25 @@ struct Guard {
     position: (usize, usize),
 }
 
+enum StepError {
+    OutOfBounds,
+    Loop,
+}
+
 impl Guard {
-    fn try_step(&self, lab: &mut Lab) -> Result<Self, ()> {
+    fn try_step(&self, lab: &mut Lab) -> Result<Self, StepError> {
+        if !lab.guard_history.insert(GuardHistory {
+            row: self.position.0,
+            col: self.position.1,
+            dir: self.direction,
+        }) {
+            println!("loop at ({}, {})", self.position.0, self.position.1);
+            return Err(StepError::Loop);
+        }
         let offset = self.direction.to_offset();
         let position_new = (self.position.0 as i32, self.position.1 as i32);
         let position_new = (position_new.0 + offset.0, position_new.1 + offset.1);
+
         match lab
             .map
             .get(position_new.0 as usize)
@@ -56,7 +71,7 @@ impl Guard {
                 guard_new.direction = guard_new.direction.turn_right();
                 return guard_new.try_step(lab);
             }
-            None => return Err(()),
+            None => return Err(StepError::OutOfBounds),
         }
         Ok(Self {
             position: (position_new.0 as usize, position_new.1 as usize),
@@ -95,10 +110,18 @@ impl TryFrom<char> for LabTile {
     }
 }
 
-#[derive(Debug)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
+struct GuardHistory {
+    row: usize,
+    col: usize,
+    dir: Direction,
+}
+
+#[derive(Debug, Clone)]
 struct Lab {
     map: Vec<Vec<LabTile>>,
     guard: Guard,
+    guard_history: HashSet<GuardHistory>,
 }
 
 #[derive(Debug)]
@@ -130,6 +153,7 @@ impl FromStr for Lab {
                         direction: Direction::Up,
                         position,
                     },
+                    guard_history: HashSet::new(),
                 }
             })
             .map_err(|_| ParseLabError)
@@ -137,10 +161,14 @@ impl FromStr for Lab {
 }
 
 impl Lab {
-    fn forward_time(&mut self) {
+    fn forward_time(&mut self) -> bool {
         let mut guard = self.guard.clone();
-        while let Ok(guard_new) = guard.try_step(self) {
-            guard = guard_new;
+        loop {
+            match guard.try_step(self) {
+                Ok(guard_new) => guard = guard_new,
+                Err(StepError::Loop) => return true,
+                Err(StepError::OutOfBounds) => return false,
+            }
         }
     }
 }
@@ -169,11 +197,15 @@ impl Display for Lab {
 fn main() {
     let contents = std::fs::read_to_string("data/input.txt").expect("Failed to read the input");
 
-    let mut lab: Lab = contents.parse().expect("Should be able to parse input");
-    lab.forward_time();
+    let lab_template: Lab = contents.parse().expect("Should be able to parse input");
+    let mut first_lab = lab_template.clone();
+    let loop_detected = first_lab.forward_time();
+    if loop_detected {
+        panic!("Initial run must not contain a loop");
+    }
 
-    println!("Lab:\n{}", lab);
-    let tiles_visited_count = lab
+    println!("Lab:\n{}", first_lab);
+    let tiles_visited_count = first_lab
         .map
         .iter()
         .flat_map(|row| row.iter())
@@ -181,4 +213,42 @@ fn main() {
         .count();
 
     println!("Number of visited tiles: {}", tiles_visited_count);
+
+    let (test_row, test_col) = (6, 3);
+    let mut lab_test = lab_template.clone();
+    lab_test.map[test_row][test_col] = LabTile::Obstacle;
+    println!("Test Lab:\n{}", lab_test);
+    println!("{}", lab_test.forward_time());
+
+    let loop_count = first_lab
+        .map
+        .iter()
+        .enumerate()
+        .flat_map(|(row_idx, row)| {
+            row.iter()
+                .enumerate()
+                .map(move |(col_idx, &tile)| ((row_idx, col_idx), tile))
+        })
+        .filter(|(position, tile)| {
+            *tile == LabTile::Visited
+                && !(position.0 == lab_template.guard.position.0
+                    && position.1 == lab_template.guard.position.1)
+        })
+        .filter_map(|((row, col), _)| {
+            // println!("row: {}, col: {}", row, col);
+            let mut lab = lab_template.clone();
+            lab.map[row][col] = LabTile::Obstacle;
+
+            let loop_detected = lab.forward_time();
+            // println!("{}", lab);
+            if loop_detected {
+                Some(())
+            } else {
+                None
+            }
+        })
+        // .take(0)
+        .count();
+
+    println!("Number of possible loops: {}", loop_count);
 }
