@@ -34,21 +34,21 @@ impl From<Vec<OrderingRule>> for PageRules {
 }
 
 impl PageRules {
-    fn is_update_valid(&self, update: &Update) -> bool {
-        (0..update.page_numbers.len()).all(|i| {
-            let curr = update.page_numbers[i];
+    fn is_order_valid(&self, order: &Vec<usize>) -> bool {
+        (0..order.len()).all(|i| {
+            let curr = order[i];
 
             let pages_before_forced = self.is_after.get(&curr);
             let pages_after_forced = self.is_before.get(&curr);
 
             let violates_pages_before = pages_before_forced.is_some_and(|pages_before_forced| {
-                update.page_numbers[i + 1..]
+                order[i + 1..]
                     .iter()
                     .any(|next| pages_before_forced.contains(next))
             });
 
             let violates_pages_after = pages_after_forced.is_some_and(|pages_after_forced| {
-                update.page_numbers[..i]
+                order[..i]
                     .iter()
                     .any(|prev| pages_after_forced.contains(prev))
             });
@@ -56,22 +56,6 @@ impl PageRules {
             return !violates_pages_before && !violates_pages_after;
         })
     }
-
-    fn to_pages(&self) -> Vec<Page> {
-        self.is_before
-            .keys()
-            .map(|&number| Page {
-                number,
-                comes_before: self.is_before.get(&number).unwrap(),
-            })
-            .collect()
-    }
-}
-
-#[derive(Clone)]
-struct Page<'a> {
-    number: usize,
-    comes_before: &'a Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -137,55 +121,46 @@ impl Update {
         self.page_numbers[self.page_numbers.len() / 2]
     }
 
-    fn reorder(&mut self, page_order: &mut HashMap<usize, usize>) {
-        for page in self.page_numbers.iter() {
-            page_order.entry(*page).or_insert(0);
-        }
-        println!("Page order: {:?}", page_order);
+    fn reorder(&self, page_rules: &PageRules) -> Vec<usize> {
+        let comes_before_rules: HashMap<usize, HashSet<usize>> = page_rules
+            .is_after
+            .iter()
+            .map(|(&key, values)| (key, values.iter().map(|&v| v).collect::<HashSet<_>>()))
+            .collect();
 
-        self.page_numbers.sort_by(|a, b| {
-            page_order
-                .get(a)
-                .expect("I'm pretty confident I've inserted all pages")
-                .cmp(
-                    page_order
-                        .get(b)
-                        .expect("Maybe I didn't, but who knows these days"),
-                )
-        });
-    }
-}
+        let pages: HashSet<_> = self.page_numbers.iter().map(|&v| v).collect();
+        let mut result = Vec::with_capacity(self.page_numbers.len());
+        let mut step = 0;
 
-fn get_page_order(pages: Vec<Page>) -> HashMap<usize, usize> {
-    let mut result: HashMap<usize, usize> = HashMap::new();
-    for page in &pages[..] {
-        let mut pls_check_me: Vec<_> = page.comes_before.iter().collect();
-        while let Some(number) = pls_check_me.pop() {
-            println!("to be checked: {}", pls_check_me.len());
-            let entry = *result.entry(*number).or_insert(1);
-            if let Some(&this) = result.get(&page.number) {
-                if this + 1 > entry {
-                    result.insert(*number, this + 1);
-                }
+        while result.len() != self.page_numbers.len() {
+            // println!("result: {:?}", result);
+            if step >= pages.len() {
+                panic!("too many iterations. We should be able to place at least one element per iteration");
             } else {
-                result.insert(page.number, 0);
+                step += 1;
             }
-
-            pages
-                .iter()
-                .find(|page| page.number == *number)
-                .expect("Should exist...")
-                .comes_before
-                .iter()
-                .for_each(|number| {
-                    if !pls_check_me.contains(&number) {
-                        pls_check_me.push(number)
+            let already_inserted: HashSet<_> = result.iter().map(|&v| v).collect();
+            let to_be_inserted: HashSet<_> =
+                pages.difference(&already_inserted).map(|&v| v).collect();
+            to_be_inserted.iter().for_each(|&number| {
+                if let Some(rules) = comes_before_rules.get(&number) {
+                    let rules_that_apply: Vec<_> = rules.intersection(&to_be_inserted).collect();
+                    // println!("rules that apply to {}: {:?}", number, rules_that_apply);
+                    if rules_that_apply.len() == 0 {
+                        result.push(number);
                     }
-                });
+                } else {
+                    result.push(number);
+                }
+            });
+        }
+
+        if page_rules.is_order_valid(&result) {
+            return result;
+        } else {
+            panic!("ordering didn't work")
         }
     }
-
-    result
 }
 
 fn main() {
@@ -205,24 +180,27 @@ fn main() {
     let updates_valid_middle_page_number_sum: usize = (&updates)
         .iter()
         .filter_map(|update| {
-            if page_rules.is_update_valid(update) {
+            if page_rules.is_order_valid(&update.page_numbers) {
                 Some(update.get_middle_page())
             } else {
                 None
             }
         })
         .sum();
-    let pages = page_rules.to_pages();
-    let mut page_order = get_page_order(pages);
 
     let updates_invalid_reordered_middle_page_number_sum: usize = updates
         .iter_mut()
         .filter_map(|update| {
-            if !page_rules.is_update_valid(update) {
+            if !page_rules.is_order_valid(&update.page_numbers) {
                 println!("before: {:?}", update.page_numbers);
-                update.reorder(&mut page_order);
-                println!("after: {:?}", update.page_numbers);
-                Some(update.get_middle_page())
+                let updated_order = update.reorder(&page_rules);
+                println!("after: {:?}", updated_order);
+                Some(
+                    Update {
+                        page_numbers: updated_order,
+                    }
+                    .get_middle_page(),
+                )
             } else {
                 None
             }
