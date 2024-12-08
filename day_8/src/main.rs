@@ -127,6 +127,56 @@ impl City {
 
         result
     }
+
+    fn antinodes_resonant_harmonics(&self) -> HashSet<Antenna> {
+        let mut result = HashSet::new();
+
+        for (frequency, chunk) in &self
+            .antennas
+            .iter()
+            .sorted_by_key(|a| a.frequency)
+            .chunk_by(|a| a.frequency)
+        {
+            for combination in chunk.combinations(2) {
+                let [a, b] = combination[..] else {
+                    panic!("found a pair consisting of some other number, but not two, elements. Hopefully I'll get a nobel prize for this");
+                };
+                let diff = (
+                    a.position.y as isize - b.position.y as isize,
+                    a.position.x as isize - b.position.x as isize,
+                );
+
+                result.insert(Antenna {
+                    frequency,
+                    position: a.position,
+                });
+                result.insert(Antenna {
+                    frequency,
+                    position: b.position,
+                });
+
+                let mut position_current = a.position;
+                while let Some(position) = position_current.try_add(diff, self.bounds) {
+                    result.insert(Antenna {
+                        frequency,
+                        position,
+                    });
+                    position_current = position;
+                }
+
+                let mut position_current = a.position;
+                while let Some(position) = position_current.try_sub(diff, self.bounds) {
+                    result.insert(Antenna {
+                        frequency,
+                        position,
+                    });
+                    position_current = position;
+                }
+            }
+        }
+
+        result
+    }
 }
 
 fn main() {
@@ -135,4 +185,9 @@ fn main() {
     // println!("City: {:?}", city);
     let antinodes = city.antinodes();
     println!("Antinodes: {}", antinodes.len());
+    let antinodes_resonant_harmonics = city.antinodes_resonant_harmonics();
+    println!(
+        "Antinodes (considering resonant harmonics): {}",
+        antinodes_resonant_harmonics.len()
+    );
 }
