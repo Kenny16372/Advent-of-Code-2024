@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{iter::once, str::FromStr};
 
 #[derive(Debug, Clone, Copy)]
 enum Block {
@@ -64,6 +64,56 @@ impl DiskMap {
 
         Self { blocks }
     }
+    fn compacted_defragmented(&self) -> Self {
+        let mut blocks = self.blocks.clone();
+
+        for i in (0..blocks.len()).rev() {
+            match blocks[i] {
+                Block::File(_, _) => {
+                    DiskMap::defragment_block(&mut blocks, i);
+                    DiskMap::defragment_free_blocks(&mut blocks);
+                }
+                _ => continue,
+            }
+        }
+
+        Self { blocks }
+    }
+
+    fn defragment_block(blocks: &mut Vec<Block>, idx_block: usize) {
+        let idx = blocks.iter().position(|b| match (b, blocks[idx_block]) {
+            (&Block::Free(free), Block::File(_, size)) if free >= size => true,
+            _ => false,
+        });
+        if let Some(idx) = idx {
+            if idx >= idx_block {
+                return;
+            }
+            let free = if let Block::Free(free) = blocks[idx] {
+                free
+            } else {
+                unreachable!()
+            };
+            let size = if let Block::File(_, size) = blocks[idx_block] {
+                size
+            } else {
+                unreachable!()
+            };
+            blocks[idx] = blocks[idx_block];
+            blocks[idx_block] = Block::Free(size);
+            blocks.insert(idx + 1, Block::Free(free - size));
+        }
+    }
+
+    fn defragment_free_blocks(blocks: &mut Vec<Block>) {
+        let mut i = 1;
+        while i < blocks.len() {
+            if let (Block::Free(free1), Block::Free(free2)) = (blocks[i - 1], blocks[i]) {
+                blocks.splice(i - 1..=i, once(Block::Free(free1 + free2)));
+            }
+            i += 1;
+        }
+    }
 
     fn checksum(&self) -> usize {
         let mut idx = 0;
@@ -75,7 +125,10 @@ impl DiskMap {
                     idx += size;
                     result
                 }
-                _ => 0,
+                &Block::Free(free) => {
+                    idx += free;
+                    0
+                }
             })
             .sum()
     }
@@ -93,4 +146,11 @@ fn main() {
     // println!("Compacted disk map: {:?}", disk_map_compacted);
     let checksum = disk_map_compacted.checksum();
     println!("Checksum: {}", checksum);
+    let disk_map_compacted_defragmented = disk_map.compacted_defragmented();
+    // println!(
+    //     "Compacted disk map (defragmented): {:?}",
+    //     disk_map_compacted_defragmented
+    // );
+    let checksum_defragmented = disk_map_compacted_defragmented.checksum();
+    println!("Checksum defragmented: {}", checksum_defragmented);
 }
