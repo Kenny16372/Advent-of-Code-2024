@@ -28,7 +28,7 @@ impl FromStr for TopographicalMap {
 }
 
 impl TopographicalMap {
-    fn trailhead_sum(&self) -> usize {
+    fn trailhead_sum(&self) -> (usize, usize) {
         self.trailheads()
             .into_iter()
             .map(|trailhead| self.trails(vec![trailhead], 1))
@@ -44,9 +44,11 @@ impl TopographicalMap {
                     .collect::<HashSet<_>>()
                     .len();
                 // println!("start: {:?}, count: {:?}", trails[0][0], score);
-                score
+                (score, trails.len())
             })
-            .sum()
+            .fold((0, 0), |(acc_score, acc_len), (val_score, val_len)| {
+                (acc_score + val_score, acc_len + val_len)
+            })
     }
 
     fn trails(&self, trail: Vec<(usize, usize)>, height: i8) -> Vec<Vec<(usize, usize)>> {
@@ -116,6 +118,7 @@ fn main() {
         .parse()
         .expect("Should be able to parse topographical map");
     // println!("Topographical map: {:?}", topographical_map);
-    let trailhead_sum = topographical_map.trailhead_sum();
-    println!("Sum of trailheads: {}", trailhead_sum);
+    let (trailhead_score, trailhead_rating) = topographical_map.trailhead_sum();
+    println!("Score of trailheads: {}", trailhead_score);
+    println!("Rating of trailheads: {}", trailhead_rating);
 }
