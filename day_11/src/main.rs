@@ -1,7 +1,9 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
 #[derive(Debug, Clone)]
-struct Stones(Vec<String>);
+struct Stones {
+    stones: Vec<String>,
+}
 
 #[derive(Debug)]
 struct ParseStonesError;
@@ -10,22 +12,24 @@ impl FromStr for Stones {
     type Err = ParseStonesError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            s.split_ascii_whitespace()
+        Ok(Self {
+            stones: s
+                .split_ascii_whitespace()
                 .map(|stone| stone.to_owned())
                 .collect(),
-        ))
+        })
     }
 }
 
 impl Stones {
     fn blink(&self) -> Self {
-        Self(
-            self.0
+        Self {
+            stones: self
+                .stones
                 .iter()
                 .flat_map(|stone| Self::blink_stone(stone).into_iter())
                 .collect(),
-        )
+        }
     }
 
     fn blink_stone(stone: &String) -> Vec<String> {
@@ -51,6 +55,34 @@ impl Stones {
             }
         }
     }
+
+    fn blink_count(&self, blink_count: usize) -> usize {
+        let mut lookup = HashMap::new();
+        self.stones
+            .iter()
+            .map(|stone| self.stone_count(stone, blink_count, &mut lookup))
+            .sum()
+    }
+
+    fn stone_count(
+        &self,
+        stone: &String,
+        blink_count: usize,
+        lookup: &mut HashMap<(String, usize), usize>,
+    ) -> usize {
+        if blink_count == 0 {
+            1
+        } else if let Some(&count) = lookup.get(&(stone.clone(), blink_count)) {
+            count
+        } else {
+            let count = Self::blink_stone(stone)
+                .into_iter()
+                .map(|stone| self.stone_count(&stone, blink_count - 1, lookup))
+                .sum();
+            lookup.insert((stone.clone(), blink_count), count);
+            count
+        }
+    }
 }
 
 fn main() {
@@ -58,9 +90,13 @@ fn main() {
 
     let stones: Stones = contents.parse().expect("Should be able to parse stones");
     // println!("{:?}", stones);
-    let mut stones_blinking = stones.clone();
-    for _ in 0..25 {
-        stones_blinking = stones_blinking.blink();
-        println!("{:?}", stones_blinking.0.len());
-    }
+    // let mut stones_blinking = stones.clone();
+    // for _ in 0..25 {
+    //     stones_blinking = stones_blinking.blink();
+    //     println!("{:?}", stones_blinking.stones.len());
+    // }
+    let stones_blinking_cached = stones.blink_count(25);
+    println!("{:?}", stones_blinking_cached);
+    let stones_blinking_cached_many = stones.blink_count(75);
+    println!("{:?}", stones_blinking_cached_many);
 }
