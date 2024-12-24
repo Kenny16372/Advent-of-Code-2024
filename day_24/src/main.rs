@@ -91,6 +91,12 @@ fn main() {
     let contents = std::fs::read_to_string("data/input.txt").expect("Should be able to read input");
 
     let mut device: Device = contents.as_str().into();
+    let output = device.output();
 
-    println!("Output: {}", device.output());
+    println!("Output: {output} {:b}", output);
+    println!(
+        "{:b}",
+        0b100000101100100011000111110101000100000011001i64
+            + 0b101100011011101100111110000100011111011001101i64
+    )
 }
